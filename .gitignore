@@ -2,3 +2,4 @@ shaurya_project1.ipynb
 .venv
 .vscode
 .ipynb_checkpoints
+.DS_store
