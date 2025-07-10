@@ -97,26 +97,53 @@ plt.tight_layout()
 plt.show()
 import pandas as pd
 from sklearn.preprocessing import LabelEncoder
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, cross_val_score
+from sklearn.pipeline import Pipeline
+from sklearn.linear_model import LogisticRegression
 
 # 1️⃣ Transpose so samples = rows
-X = scaled_df.T
+X = selected_df.T
 print("✅ X shape:", X.shape)
 print("✅ Sample names example:", X.index.tolist()[:10])
 
-# 2️⃣ Build labels from sample names
+# 2️⃣ Build binary labels for hypoxia vs normoxia
 labels = []
 for name in X.index:
     name_lower = name.lower()
-    if 'shzhx2' in name_lower:
-        labels.append('shZHX2')
-    elif 'sgzhx2' in name_lower:
-        labels.append('sgZHX2')
-    elif 'rescue' in name_lower:
-        labels.append('rescue')
-    elif 'hd' in name_lower:
-        labels.append('1.6HD')
-    elif 'shctrl' in name_lower or 'sgctrl' in name_lower or 'control' in name_lower:
-        labels.append('control')
+    if any(key in name_lower for key in ["h.", "h_", "h-", "hd", "1.6hd"]):
+        labels.append("hypoxia")
+    elif any(key in name_lower for key in ["n.", "ctrl", "control", "nc"]):
+        labels.append("normoxia")
     else:
-        labels.append('unknown')
+        labels.append("unknown")
+
+# Filter unknown samples
+mask = [lab != "unknown" for lab in labels]
+X = X[mask]
+y = [lab for lab in labels if lab != "unknown"]
+
+print("✅ Labeled samples:", {l: y.count(l) for l in set(y)})
+
+le = LabelEncoder()
+y_enc = le.fit_transform(y)
+
+# Train/test split with stratification
+X_train, X_test, y_train, y_test = train_test_split(
+    X, y_enc, test_size=0.3, random_state=42, stratify=y_enc
+)
+
+# Pipeline with PCA for dimensionality reduction and logistic regression
+n_components = min(10, X_train.shape[0] - 1)
+model = Pipeline([
+    ("pca", PCA(n_components=n_components)),
+    ("clf", LogisticRegression(max_iter=1000))
+])
+
+# Cross-validation on the training set
+cv_scores = cross_val_score(model, X_train, y_train, cv=5, scoring="accuracy")
+print(f"✅ Cross-val accuracy: {cv_scores.mean():.3f} ± {cv_scores.std():.3f}")
+
+# Fit on the full training set and evaluate on the hold-out test set
+model.fit(X_train, y_train)
+test_accuracy = model.score(X_test, y_test)
+print("✅ Test accuracy:", test_accuracy)
